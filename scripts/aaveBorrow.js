@@ -10,6 +10,7 @@ async function main() {
   const poolAddressProviderAddress =
     networkConfig[chainId].poolAddressProviderAddress;
   const wethContractAddress = networkConfig[chainId].wethContractAddress;
+  const daiTokenAddress = networkConfig[chainId].DAI_Token_Address;
 
   // Pool Address Provider : 0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e
 
@@ -26,7 +27,7 @@ async function main() {
   console.log("Deposited!");
 
   // borrow
-  const {
+  let {
     totalCollateralBase,
     totalDebtBase,
     availableBorrowsBase,
@@ -35,21 +36,26 @@ async function main() {
     healthFactor,
   } = await getBorrowUserData(lendingPool, signer);
 
-  console.log(`The Ammount of collateral deposited ${totalCollateralBase}`);
-  console.log(`The Ammount  borrowed ${totalDebtBase}`);
-  console.log(`The Ammount that can be borrowed ${availableBorrowsBase}`);
-
   const daiPrice = await getPriceFeed();
 
   const ammountDaiToBorrow =
     daiPrice.toString() * 0.95 * (1 / Number(daiPrice));
-  console.log(ammountDaiToBorrow);
+  console.log(`Ammount of DAI Which Can Be borrowed ${ammountDaiToBorrow}`);
   const ammountDaiToBorrowWEi = ethers.parseEther(
     ammountDaiToBorrow.toString()
   );
 
-  const daiTokenAddress = networkConfig[chainId].DAI_Token_Address;
   await borrowDai(daiTokenAddress, lendingPool, ammountDaiToBorrowWEi, signer);
+  await getBorrowUserData(lendingPool, signer);
+  await repay(daiTokenAddress, ammountDaiToBorrowWEi, lendingPool, signer);
+  await getBorrowUserData(lendingPool, signer);
+}
+
+async function repay(daiAddress, ammount, lendingPool, account) {
+  await approveERC20(daiAddress, lendingPool.target, ammount, account);
+  const repayTx = await lendingPool.repay(daiAddress, ammount, 2, account);
+  await repayTx.wait(1);
+  console.log("Repay Successfull!");
 }
 
 async function borrowDai(
@@ -61,7 +67,7 @@ async function borrowDai(
   const borrowTx = await lendingPool.borrow(
     daiAddress,
     ammountDaiToBorrowWEi,
-    1,
+    2,
     0,
     account
   );
@@ -79,7 +85,7 @@ async function getPriceFeed() {
   );
   const priceFeed = await daiEthPriceFeed.latestRoundData();
   const price = priceFeed[1];
-  console.log(price.toString());
+  console.log(`DAI Price Feed DAI/ETH ${price.toString()}`);
   return price;
 }
 
@@ -92,6 +98,11 @@ async function getBorrowUserData(lendingPool, account) {
     ltv,
     healthFactor,
   } = await lendingPool.getUserAccountData(account.address);
+
+  console.log(`The Ammount of collateral deposited ${totalCollateralBase}`);
+  console.log(`The Ammount  borrowed ${totalDebtBase}`);
+  console.log(`The Ammount that can be borrowed ${availableBorrowsBase}`);
+
   return {
     totalCollateralBase,
     totalDebtBase,
